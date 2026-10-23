@@ -86,8 +86,9 @@ documents how it is used.
   **Codex CLI 0.147.0** (app-server v2); other versions may work, and the
   installed binary is always the authority — see
   [Protocol compatibility](#protocol-compatibility).
-- A workspace directory under the allowed administrative root. That root
-  defaults to `~/workspace` and must exist:
+- A workspace directory, or a symlink entry for one, whose supplied path is
+  under the allowed administrative root. That root defaults to `~/workspace`
+  and must exist:
 
   ```bash
   mkdir -p ~/workspace
@@ -380,9 +381,13 @@ stays in `recovery_required` rather than silently becoming `completed`.
   visits cannot resolve its own domain to `127.0.0.1` and talk to the local
   service. Add extra hostnames with `CODEX_AGENT_ALLOWED_HOSTS` if the tunnel
   rewrites `Host`.
-- The workspace must be absolute, existing, and under the allowed root.
-- NUL bytes, `..` segments, invalid roots, and symlink escapes after `realpath`
-  are rejected.
+- The workspace path must be absolute, existing, and logically under the
+  allowed root. A symlink located under that root is supported: it is resolved
+  before the canonical path is sent to Codex. A path supplied outside the root
+  is still rejected.
+- For an accepted symlink, the root is a logical entrypoint boundary; the
+  symlink target may therefore live outside the root's physical directory.
+- NUL bytes, `..` segments, and invalid roots are rejected.
 - The remote client cannot choose `config`, model, sandbox, or permissions;
   environment overrides are administrative and local to the process.
 - These tools are not read-only. Review Codex approvals before accepting

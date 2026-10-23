@@ -87,7 +87,7 @@ function failure(error: unknown) {
 }
 
 export function createMcpServer(manager: JobManager): McpServer {
-  const server = new McpServer({ name: "Codex Agent", version: "0.3.1" });
+  const server = new McpServer({ name: "Codex Agent", version: "0.3.1" }, { maxToolInputElements: 10_000 });
 
   server.registerTool(
     "codex_start",
@@ -96,7 +96,7 @@ export function createMcpServer(manager: JobManager): McpServer {
       description:
         "Crea un thread persistente de Codex en un workspace local permitido y comienza un turn. No expone shell ni filesystem al cliente MCP.",
       inputSchema: {
-        workspace: z.string().min(1).describe("Ruta absoluta bajo la raíz administrativa configurada."),
+        workspace: z.string().min(1).describe("Ruta absoluta lógicamente bajo la raíz administrativa; se aceptan symlinks ubicados ahí."),
         prompt: z.string().min(1).describe("Instrucción para Codex."),
       },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },

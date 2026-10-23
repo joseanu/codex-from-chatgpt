@@ -9,7 +9,7 @@ import type { TurnStartParams } from "../protocol/codex-0.147.0-ts/v2/TurnStartP
 
 import { AppServerError, type AppServerClient, type AppServerMessage, type JsonObject, type JsonRpcId } from "./codex-app-server.js";
 import { StateStore, type PersistedJob, type PersistedValidation } from "./store.js";
-import { validateWorkspace } from "./workspaces.js";
+import { resolveWorkspace } from "./workspaces.js";
 
 export type JobStatus =
   | "starting"
@@ -483,13 +483,13 @@ export class JobManager {
   }
 
   async start(workspace: string, prompt: string): Promise<JobStartResult> {
-    const canonicalWorkspace = await validateWorkspace(workspace);
+    const workspaceResolution = await resolveWorkspace(workspace);
     this.validatePrompt(prompt);
     return this.withExclusive(async () => {
       await this.ensureReady();
       this.assertNoActiveTurn();
       const job: JobRecord = {
-        jobId: randomUUID(), threadId: null, workspace: canonicalWorkspace, turnId: null, status: "starting",
+        jobId: randomUUID(), threadId: null, workspace: workspaceResolution.logical, turnId: null, status: "starting",
         finalMessage: null, latestDiff: null, filesChanged: [], commandsExecuted: [], error: null,
         pendingApprovals: new Map(), lastAgentMessage: null, agentMessages: new Map(), revision: 0,
         activity: "Starting Codex", validation: [], warnings: [], completionReportInjected: false,
@@ -502,7 +502,7 @@ export class JobManager {
         if (!this.persist(job, true)) throw new Error("No se pudo persistir el job antes de crear el thread.");
         const response = await this.appServer.request<unknown>("thread/start", {
           ...(this.model ? { model: this.model } : {}),
-          cwd: canonicalWorkspace,
+          cwd: workspaceResolution.canonical,
           approvalPolicy: "on-request",
           approvalsReviewer: "user",
           sandbox: "workspace-write",
@@ -652,7 +652,8 @@ export class JobManager {
 
   private async reconcileJob(job: JobRecord, mayResume: boolean): Promise<void> {
     try {
-      job.workspace = await validateWorkspace(job.workspace);
+      const workspaceResolution = await resolveWorkspace(job.workspace);
+      job.workspace = workspaceResolution.logical;
       const response = await this.appServer.request<unknown>("thread/read", { threadId: job.threadId, includeTurns: true });
       const thread = isObject(response) && isObject(response.thread) ? response.thread : null;
       if (!thread || stringValue(thread.id) !== job.threadId) throw new Error("thread/read devolvió un thread distinto.");

@@ -18,8 +18,22 @@ function configuredRoot(root = process.env.CODEX_WORKSPACE_ROOT ?? DEFAULT_WORKS
   return root;
 }
 
-/** Resolves an existing directory under the canonical, administrative workspace root. */
-export async function validateWorkspace(input: string, rootInput?: string): Promise<string> {
+function escapesRoot(relative: string): boolean {
+  return relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative);
+}
+
+export type WorkspaceResolution = {
+  logical: string;
+  canonical: string;
+};
+
+/**
+ * Resolves an existing directory whose supplied path is under the administrative
+ * workspace root. The supplied path is checked before realpath so a workspace
+ * alias (for example, a symlink inside ~/workspace) can point elsewhere while
+ * Codex still receives the directory's canonical path.
+ */
+export async function resolveWorkspace(input: string, rootInput?: string): Promise<WorkspaceResolution> {
   if (typeof input !== "string" || input.length === 0) {
     throw new WorkspaceValidationError("workspace debe ser una ruta no vacía.");
   }
@@ -34,21 +48,25 @@ export async function validateWorkspace(input: string, rootInput?: string): Prom
   }
 
   const rootInputValue = configuredRoot(rootInput);
-  let root: string;
+  const logicalRoot = path.resolve(rootInputValue);
+  const logicalCandidate = path.resolve(input);
+  if (escapesRoot(path.relative(logicalRoot, logicalCandidate))) {
+    throw new WorkspaceValidationError(`workspace debe estar dentro de ${rootInputValue}: ${input}`);
+  }
+
   let candidate: string;
   try {
-    root = await realpath(rootInputValue);
+    const root = await realpath(rootInputValue);
     if (!(await stat(root)).isDirectory()) throw new Error("la raíz no es un directorio");
-    candidate = await realpath(path.resolve(input));
+    candidate = await realpath(logicalCandidate);
     if (!(await stat(candidate)).isDirectory()) throw new Error("el workspace no es un directorio");
   } catch {
     throw new WorkspaceValidationError(`workspace no existe o no puede resolverse: ${input}`);
   }
 
-  const relative = path.relative(root, candidate);
-  const escapesRoot = relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative);
-  if (escapesRoot) {
-    throw new WorkspaceValidationError(`workspace debe estar dentro de ${rootInputValue}: ${input}`);
-  }
-  return candidate;
+  return { logical: logicalCandidate, canonical: candidate };
+}
+
+export async function validateWorkspace(input: string, rootInput?: string): Promise<string> {
+  return (await resolveWorkspace(input, rootInput)).canonical;
 }
